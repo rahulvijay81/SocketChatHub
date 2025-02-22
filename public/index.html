@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Application</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>On Chat</h1>
+            <div class="online-users">
+                <span id="onlineCount">0</span> users online
+            </div>
+        </div>
+        <div id="username-container">
+            <input type="text" id="username" placeholder="Enter your username" />
+            <button id="setUsername">Join Chat</button>
+        </div>
+        <div id="messages"></div>
+        <div class="typing-indicator" id="typingIndicator">
+            <span class="typing-text"></span>
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+        <div id="input-container">
+            <input type="text" id="message" placeholder="Type a message..." disabled />
+            <button id="send" disabled>Send</button>
+        </div>
+    </div>
+    <script src="client.js"></script>
+</body>
+</html>
