@@ -80,7 +80,7 @@ function renderContent(content) {
 function appendMessage(sender, content, isSelf, timestamp) {
   const isMentioned = content.toLowerCase().includes(`@${username.toLowerCase()}`);
   const row = document.createElement('div');
-  row.className = 'msg' + (isMentioned && !isSelf ? ' mentioned' : '');
+  row.className = 'msg' + (isSelf ? ' msg-self' : '') + (isMentioned && !isSelf ? ' mentioned' : '');
   const initial = sender.charAt(0).toUpperCase();
   const name = isSelf ? 'You' : sender;
   const time = timestamp

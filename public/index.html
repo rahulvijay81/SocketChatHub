@@ -350,6 +350,27 @@ header {
   border-radius: 8px; cursor: pointer; transition: background 0.14s ease;
 }
 .emoji-panel button:hover { background: var(--glass-strong); }
+/* Self messages — right aligned */
+.msg.msg-self {
+  flex-direction: row-reverse;
+}
+.msg.msg-self .msg-head {
+  flex-direction: row-reverse;
+}
+.msg.msg-self .bubble {
+  background: linear-gradient(135deg, rgba(79,124,255,0.28), rgba(155,92,255,0.28));
+  border-color: rgba(155,92,255,0.35);
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: 6px;
+}
+.msg.msg-self .reactions {
+  justify-content: flex-end;
+}
+.msg.msg-self .hover-actions {
+  left: 12px;
+  right: auto;
+}
+
 /* Mention dropdown */
 .mention-dropdown {
   position: absolute; bottom: 58px; left: 0; z-index: 20;
