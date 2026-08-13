@@ -9,7 +9,11 @@ const WARN_BEFORE_MS   =  2 * 60 * 1000; //  2 minute warning before clear
 
 const initializeWebSocketServer = (server) => {
     const wss = new WebSocket.Server({ server });
-    const clients = new Map(); // ws -> { username }
+    const clients = new Map(); // ws -> { username, ip, joinedAt }
+
+    // Exposed for admin view
+    const getConnectedUsers = () =>
+        Array.from(clients.values()).map(({ username, ip, joinedAt }) => ({ username, ip, joinedAt }));
 
     const broadcastUserCount = () => {
         const count = new Set(Array.from(clients.values()).map((i) => i.username)).size;
@@ -57,8 +61,14 @@ const initializeWebSocketServer = (server) => {
 
     scheduleAutoClear();
 
-    wss.on('connection', async (ws) => {
-        console.log('WebSocket connection established');
+    wss.on('connection', async (ws, req) => {
+        // Extract real IP (handles Render's reverse proxy)
+        const ip =
+            req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+            req.socket.remoteAddress ||
+            'unknown';
+
+        console.log('WebSocket connection established from', ip);
 
         ws.once('message', async (data) => {
             try {
@@ -81,8 +91,8 @@ const initializeWebSocketServer = (server) => {
                     return;
                 }
 
-                clients.set(ws, { username });
-                console.log(`Client ${username} connected`);
+                clients.set(ws, { username, ip, joinedAt: new Date().toISOString() });
+                console.log(`Client ${username} connected from ${ip}`);
 
                 broadcastUserCount();
                 broadcastUserList();
@@ -193,7 +203,7 @@ const initializeWebSocketServer = (server) => {
         ws.on('error', (err) => console.error('WebSocket error:', err));
     });
 
-    return wss;
+    return { wss, getConnectedUsers };
 };
 
 module.exports = { initializeWebSocketServer };
