@@ -215,11 +215,9 @@ header {
 }
 
 .msg {
-  display: flex; gap: 12px; padding: 8px 10px; border-radius: var(--radius-md);
+  display: flex; gap: 12px; padding: 4px 10px; border-radius: var(--radius-md);
   position: relative; animation: msgIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  transition: background 0.18s ease;
 }
-.msg:hover { background: rgba(255,255,255,0.025); }
 @keyframes msgIn {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -239,22 +237,21 @@ header {
 .a-5 { background: linear-gradient(135deg, #f97316, #ef4444); }
 .a-6 { background: linear-gradient(135deg, #06b6d4, #3b82f6); }
 
-.msg-body { min-width: 0; flex: 1; }
+.msg-body { min-width: 0; max-width: calc(100% - 52px); display: flex; flex-direction: column; }
+.msg.msg-self .msg-body { align-items: flex-end; }
 .msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
 .msg-head .name { font-size: 14px; font-weight: 600; letter-spacing: -0.1px; }
 .msg-head .time { font-size: 12px; color: var(--faint); font-weight: 400; }
 .msg-head .edited { font-size: 11px; color: var(--faint); font-style: italic; }
 
 .bubble {
-  display: inline-block; max-width: 68%; padding: 10px 15px;
-  border-radius: var(--radius-md); border-bottom-left-radius: 6px;
+  display: inline-block; max-width: 100%; padding: 10px 15px;
+  border-radius: 18px 18px 18px 4px;
   font-size: 14.5px; line-height: 1.5; word-break: break-word;
   background: var(--glass); border: 1px solid var(--border);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 14px -6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
-.msg:hover .bubble { transform: translateY(-2px); box-shadow: 0 8px 20px -8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07); background: var(--glass-strong); }
 
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .reaction {
@@ -358,10 +355,9 @@ header {
   flex-direction: row-reverse;
 }
 .msg.msg-self .bubble {
-  background: linear-gradient(135deg, rgba(79,124,255,0.28), rgba(155,92,255,0.28));
-  border-color: rgba(155,92,255,0.35);
-  border-bottom-left-radius: var(--radius-md);
-  border-bottom-right-radius: 6px;
+  border-radius: 18px 18px 4px 18px;
+  background: rgba(79, 124, 255, 0.2);
+  border-color: rgba(79, 124, 255, 0.3);
 }
 .msg.msg-self .reactions {
   justify-content: flex-end;
@@ -395,29 +391,13 @@ header {
 }
 .mention-name { font-size: 14px; font-weight: 500; color: var(--text); }
 
-/* Mention chips in bubbles */
+/* @mention — plain bold text, no chip */
 .mention-chip {
-  display: inline-block;
-  background: rgba(155, 92, 255, 0.18);
-  color: #c8b0ff;
-  border-radius: 6px;
-  padding: 0 5px;
   font-weight: 600;
-  font-size: 0.93em;
-}
-.mention-chip.mention-me {
-  background: rgba(79, 124, 255, 0.22);
-  color: #a3bdff;
+  color: var(--text);
 }
 
-/* Highlighted row when you are mentioned */
-.msg.mentioned {
-  background: rgba(79, 124, 255, 0.07);
-  border-left: 3px solid var(--blue);
-  padding-left: 7px;
-  border-radius: var(--radius-md);
-}
-</style>
+/* Mention dropdown */</style>
 </head>
 <body>
   <div class="bg-orbs"></div>

@@ -57,16 +57,11 @@ function scrollToBottom() {
 /* ---------- Render message content with @mention highlights ---------- */
 function renderContent(content) {
   const span = document.createElement('span');
-  // Split on @username tokens and highlight each
   const parts = content.split(/(@\w+)/g);
   parts.forEach((part) => {
     if (/^@\w+$/.test(part)) {
       const chip = document.createElement('span');
       chip.className = 'mention-chip';
-      // Highlight if it's mentioning the current user
-      if (part.toLowerCase() === `@${username.toLowerCase()}`) {
-        chip.classList.add('mention-me');
-      }
       chip.textContent = part;
       span.appendChild(chip);
     } else {
@@ -78,9 +73,9 @@ function renderContent(content) {
 
 /* ---------- Render a message ---------- */
 function appendMessage(sender, content, isSelf, timestamp) {
-  const isMentioned = content.toLowerCase().includes(`@${username.toLowerCase()}`);
+  const isMentioned = false; // highlight removed
   const row = document.createElement('div');
-  row.className = 'msg' + (isSelf ? ' msg-self' : '') + (isMentioned && !isSelf ? ' mentioned' : '');
+  row.className = 'msg' + (isSelf ? ' msg-self' : '');
   const initial = sender.charAt(0).toUpperCase();
   const name = isSelf ? 'You' : sender;
   const time = timestamp
