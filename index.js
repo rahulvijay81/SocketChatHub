@@ -16,6 +16,24 @@ const startServer = async () => {
         const app = express();
         app.use(express.static(path.join(__dirname, '/public')));
 
+        // Admin: clear all messages
+        // Usage: GET /admin/clear-chat?key=YOUR_ADMIN_KEY
+        app.get('/admin/clear-chat', async (req, res) => {
+            const adminKey = process.env.ADMIN_KEY;
+            if (!adminKey || req.query.key !== adminKey) {
+                return res.status(401).json({ error: 'Unauthorized' });
+            }
+            try {
+                const { getDatabase } = require('./src/config/db');
+                await getDatabase().query('TRUNCATE TABLE messages');
+                console.log('Messages table cleared by admin');
+                return res.json({ success: true, message: 'All messages cleared.' });
+            } catch (err) {
+                console.error('Error clearing messages:', err);
+                return res.status(500).json({ error: 'Failed to clear messages' });
+            }
+        });
+
         const address = Object.values(os.networkInterfaces()).flat().find((iface) => iface.family === 'IPv4' && !iface.internal);
         const ip = address ? address.address : 'localhost';
 

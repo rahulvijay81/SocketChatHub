@@ -19,3 +19,5 @@ services:
         fromDatabase:
           name: socketchathub-db
           property: connectionString
+      - key: ADMIN_KEY
+        value: stratagile-admin-2026
