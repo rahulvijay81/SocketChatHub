@@ -15,6 +15,27 @@ const initializeWebSocketServer = (server) => {
     const getConnectedUsers = () =>
         Array.from(clients.values()).map(({ username, ip, joinedAt }) => ({ username, ip, joinedAt }));
 
+    /* ---------- Heartbeat: ping every 10s, kill if no pong within 5s ---------- */
+    const PING_INTERVAL = 10000;
+    const PONG_TIMEOUT  = 5000;
+
+    const heartbeat = setInterval(() => {
+        wss.clients.forEach((ws) => {
+            if (!ws.isAlive) {
+                ws.terminate(); // forcefully close dead socket
+                return;
+            }
+            ws.isAlive = false;
+            ws.ping();
+            // Kill if no pong arrives within 5s
+            ws._pongTimer = setTimeout(() => {
+                if (!ws.isAlive) ws.terminate();
+            }, PONG_TIMEOUT);
+        });
+    }, PING_INTERVAL);
+
+    wss.on('close', () => clearInterval(heartbeat));
+
     const broadcastUserCount = () => {
         const count = new Set(Array.from(clients.values()).map((i) => i.username)).size;
         const payload = JSON.stringify({ type: 'userCount', count });
@@ -67,6 +88,12 @@ const initializeWebSocketServer = (server) => {
             req.headers['x-forwarded-for']?.split(',')[0].trim() ||
             req.socket.remoteAddress ||
             'unknown';
+
+        ws.isAlive = true;
+        ws.on('pong', () => {
+            ws.isAlive = true;
+            clearTimeout(ws._pongTimer); // cancel kill timer — pong arrived in time
+        });
 
         console.log('WebSocket connection established from', ip);
 
