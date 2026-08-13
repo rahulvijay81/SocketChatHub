@@ -13,7 +13,6 @@ const emojiPanel = document.getElementById('emojiPanel');
 const typingEl = document.getElementById('typing');
 const typingText = typingEl.querySelector('.typing-text');
 const onlineCount = document.getElementById('onlineCount');
-const leaveBtn = document.getElementById('leaveBtn');
 const mentionDropdown = document.getElementById('mentionDropdown');
 
 const EMOJIS = ['😀','😂','😍','😊','😎','🥳','😢','😡','👍','👎','🙏','👏','❤️','🔥','🎉','✨','💯','😅','🤔','😴','🤯','😇','🤗','😘','🥰','😜','🤪','😭','😤','😱','💀','👀','💪','🫶','🤝','💔','🎂','⚽','🏆','🚀','🌙','☀️','🌈','🍕','☕'];
@@ -360,11 +359,6 @@ sendBtn.addEventListener('click', (e) => {
   sendBtn.appendChild(circle);
   setTimeout(() => circle.remove(), 600);
   sendMessage();
-});
-
-leaveBtn.addEventListener('click', () => {
-  localStorage.removeItem(STORAGE_KEY);
-  location.reload();
 });
 
 /* ---------- Message interactions ---------- */
