@@ -1,72 +1,75 @@
 const WebSocket = require('ws');
 const { getMessages, saveMessage } = require('../models/messages');
 
+const MAX_CONTENT_LENGTH = 2000;
+const MAX_USERNAME_LENGTH = 24;
+
 const initializeWebSocketServer = (server) => {
     const wss = new WebSocket.Server({ server });
-    const clients = new Map(); // Store client info with their ws connection
+    const clients = new Map(); // ws -> { username }
 
-    // Function to broadcast online user count (unique usernames currently connected)
     const broadcastUserCount = () => {
-        const count = new Set(
-            Array.from(clients.values()).map((info) => info.username)
-        ).size;
-
-        const payload = JSON.stringify({
-            type: 'userCount',
-            count
-        });
-
+        const count = new Set(Array.from(clients.values()).map((i) => i.username)).size;
+        const payload = JSON.stringify({ type: 'userCount', count });
         clients.forEach((_, client) => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(payload);
-            }
+            if (client.readyState === WebSocket.OPEN) client.send(payload);
         });
     };
 
-    // Broadcast the list of online usernames to all clients
     const broadcastUserList = () => {
-        const users = [...new Set(Array.from(clients.values()).map((info) => info.username))];
+        const users = [...new Set(Array.from(clients.values()).map((i) => i.username))];
         const payload = JSON.stringify({ type: 'userList', users });
         clients.forEach((_, client) => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(payload);
-            }
+            if (client.readyState === WebSocket.OPEN) client.send(payload);
         });
     };
 
-    wss.on('connection', async (ws, req) => {
+    wss.on('connection', async (ws) => {
         console.log('WebSocket connection established');
 
-        // Wait for initial username before adding to clients
         ws.once('message', async (data) => {
             try {
-                const { username } = JSON.parse(data);
+                const { username: rawUsername } = JSON.parse(data);
+                const username = (rawUsername || '').trim().slice(0, MAX_USERNAME_LENGTH);
+
                 if (!username) {
                     ws.send(JSON.stringify({ error: 'Username required' }));
+                    ws.close();
                     return;
                 }
 
-                // Store client with their username
+                // Block duplicate usernames
+                const taken = Array.from(clients.values()).some(
+                    (i) => i.username.toLowerCase() === username.toLowerCase()
+                );
+                if (taken) {
+                    ws.send(JSON.stringify({ error: 'Username already taken. Choose another.' }));
+                    ws.close();
+                    return;
+                }
+
                 clients.set(ws, { username });
                 console.log(`Client ${username} connected`);
 
                 broadcastUserCount();
                 broadcastUserList();
 
-                // Send previous messages
+                // Send message history
                 try {
                     const messages = await getMessages();
-                    console.log(`Retrieved ${messages.length} messages successfully`);
-                    for (const msg of messages) {
-                        const isSelf = msg.username === username;
-                        ws.send(JSON.stringify({
-                            type: isSelf ? 'sentMessage' : 'receivedMessage',
+                    console.log(`Retrieved ${messages.length} messages`);
+                    // Send history as a single batch so client can clear+reload atomically
+                    ws.send(JSON.stringify({
+                        type: 'history',
+                        messages: messages.map((msg) => ({
+                            type: msg.username === username ? 'sentMessage' : 'receivedMessage',
                             username: msg.username,
                             messageType: msg.type || 'text',
                             content: msg.message,
-                            timestamp: msg.timestamp
-                        }));
-                    }
+                            timestamp: msg.timestamp,
+                            replyTo: msg.reply_to || null
+                        }))
+                    }));
                 } catch (err) {
                     console.error('Error retrieving messages:', err);
                 }
@@ -76,61 +79,51 @@ const initializeWebSocketServer = (server) => {
                     try {
                         const data = JSON.parse(messageData);
 
-                        // Handle typing indicators
+                        // Typing indicators
                         if (data.type === 'typing' || data.type === 'stopTyping') {
-                            // Broadcast typing status to other clients
-                            const typingPayload = JSON.stringify({
-                                type: data.type,
-                                username: username
-                            });
-
-                            clients.forEach((clientInfo, client) => {
-                                if (client !== ws && client.readyState === WebSocket.OPEN) {
-                                    client.send(typingPayload);
-                                }
+                            const payload = JSON.stringify({ type: data.type, username });
+                            clients.forEach((info, client) => {
+                                if (client !== ws && client.readyState === WebSocket.OPEN)
+                                    client.send(payload);
                             });
                             return;
                         }
 
-                        // Handle regular messages
-                        const content = data.content;
+                        // Regular messages
+                        const content = (data.content || '').trim();
                         const messageType = data.messageType || 'text';
                         const replyTo = data.replyTo || null;
-                        if (!content) {
-                            console.log('Invalid message format - missing message content');
+
+                        if (!content) return;
+                        if (content.length > MAX_CONTENT_LENGTH) {
+                            ws.send(JSON.stringify({ error: 'Message too long (max 2000 chars)' }));
                             return;
                         }
 
                         try {
-                            // Save message to database
-                            await saveMessage(username, content, messageType);
-                            console.log('Message saved successfully');
-
+                            await saveMessage(username, content, messageType, replyTo);
                             const now = new Date().toISOString();
 
-                            // Send confirmation back to sender
                             ws.send(JSON.stringify({
                                 type: 'sentMessage',
-                                messageType: messageType,
-                                content: content,
+                                messageType,
+                                content,
                                 timestamp: now,
-                                replyTo: replyTo
+                                replyTo
                             }));
 
-                            // Broadcast to other clients
                             const broadcastPayload = JSON.stringify({
                                 type: 'receivedMessage',
-                                username: username,
-                                messageType: messageType,
-                                content: content,
+                                username,
+                                messageType,
+                                content,
                                 timestamp: now,
-                                replyTo: replyTo
+                                replyTo
                             });
 
-                            clients.forEach((clientInfo, client) => {
-                                if (client !== ws && client.readyState === WebSocket.OPEN) {
+                            clients.forEach((info, client) => {
+                                if (client !== ws && client.readyState === WebSocket.OPEN)
                                     client.send(broadcastPayload);
-                                }
                             });
                         } catch (dbError) {
                             console.error('Database error:', dbError);
@@ -142,29 +135,21 @@ const initializeWebSocketServer = (server) => {
                     }
                 });
             } catch (parseError) {
-                console.error('Error parsing initial username:', parseError);
+                console.error('Error parsing initial message:', parseError);
                 ws.close();
             }
         });
 
         ws.on('close', () => {
-            const clientInfo = clients.get(ws);
-            const username = clientInfo?.username;
+            const info = clients.get(ws);
+            const username = info?.username;
             console.log(`Client ${username || 'unknown'} disconnected`);
-
             clients.delete(ws);
 
             if (username) {
-                // Notify other clients that this user has stopped typing
-                const stopTypingPayload = JSON.stringify({
-                    type: 'stopTyping',
-                    username: username
-                });
-
-                clients.forEach((info, client) => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(stopTypingPayload);
-                    }
+                const payload = JSON.stringify({ type: 'stopTyping', username });
+                clients.forEach((_, client) => {
+                    if (client.readyState === WebSocket.OPEN) client.send(payload);
                 });
             }
 
@@ -178,6 +163,4 @@ const initializeWebSocketServer = (server) => {
     return wss;
 };
 
-module.exports = {
-    initializeWebSocketServer
-};
+module.exports = { initializeWebSocketServer };

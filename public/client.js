@@ -27,6 +27,7 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 let typingTimer = null;
 let typingTimeout = null;
+let hasJoined = false; // guard against double-join
 const MAX_RECONNECT_ATTEMPTS = 10;
 
 /* ---------- Online users (for mention dropdown) ---------- */
@@ -34,7 +35,7 @@ let onlineUsers = [];
 let mentionIndex = -1;
 
 /* ---------- Reply state ---------- */
-let replyTo = null; // { sender, content }
+let replyTo = null;
 
 function setReply(sender, content) {
   replyTo = { sender, content };
@@ -58,6 +59,15 @@ function safeSend(payload) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
 }
 
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function updateStatus(text, state) {
   status.className = `status status-${state}`;
   status.querySelector('span').textContent = text;
@@ -77,7 +87,7 @@ function scrollToBottom() {
   messagesList.scrollTop = messagesList.scrollHeight;
 }
 
-/* ---------- Render message content with @mention highlights ---------- */
+/* ---------- Render message content with @mention bold ---------- */
 function renderContent(content) {
   const span = document.createElement('span');
   const parts = content.split(/(@\w+)/g);
@@ -94,48 +104,77 @@ function renderContent(content) {
   return span;
 }
 
-/* ---------- Render a message ---------- */
+/* ---------- Render a message (XSS-safe) ---------- */
 function appendMessage(sender, content, isSelf, timestamp, replyData) {
   const row = document.createElement('div');
   row.className = 'msg' + (isSelf ? ' msg-self' : '');
-  const initial = sender.charAt(0).toUpperCase();
-  const name = isSelf ? 'You' : sender;
+
+  const initial = esc(sender.charAt(0).toUpperCase());
+  const name = isSelf ? 'You' : esc(sender);
   const time = timestamp
     ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : timeNow();
+
+  // Build structure with innerHTML using only escaped values
   row.innerHTML = `
     <div class="avatar ${avatarClass(sender)}">${initial}${isSelf ? '' : '<span class="status"></span>'}</div>
     <div class="msg-body">
-      <div class="msg-head"><span class="name">${name}</span><span class="time">${time}</span></div>
+      <div class="msg-head">
+        <span class="name">${name}</span>
+        <span class="time">${esc(time)}</span>
+      </div>
       <div class="bubble"></div>
       <div class="reactions"></div>
     </div>
     <div class="hover-actions">
       <button data-action="react" title="React">😊</button>
       <button data-action="reply" title="Reply"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg></button>
-      <button data-action="more" title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
     </div>`;
 
   const bubble = row.querySelector('.bubble');
 
-  // Show reply quote if present
+  // Reply quote — safe via textContent
   if (replyData) {
     const quote = document.createElement('div');
     quote.className = 'reply-quote';
-    quote.innerHTML = `<span class="reply-quote-name">${replyData.sender}</span>`;
-    const qt = document.createElement('span');
-    qt.className = 'reply-quote-text';
-    qt.textContent = replyData.content;
-    quote.appendChild(qt);
+    const qName = document.createElement('span');
+    qName.className = 'reply-quote-name';
+    qName.textContent = replyData.sender;
+    const qText = document.createElement('span');
+    qText.className = 'reply-quote-text';
+    qText.textContent = replyData.content;
+    quote.appendChild(qName);
+    quote.appendChild(qText);
     bubble.appendChild(quote);
   }
 
   bubble.appendChild(renderContent(content));
-  // Store sender/content on the row for reply action
+
+  // Store for reply action — safe, never injected into innerHTML
   row.dataset.sender = sender;
   row.dataset.content = content;
+
   messagesList.appendChild(row);
   scrollToBottom();
+}
+
+/* ---------- Load history (clears existing messages first) ---------- */
+function loadHistory(messages) {
+  // Remove all existing message rows (keep the date divider)
+  const dateDivider = messagesList.querySelector('.date-divider');
+  messagesList.innerHTML = '';
+  if (dateDivider) messagesList.appendChild(dateDivider);
+
+  messages.forEach((msg) => {
+    const isSelf = msg.type === 'sentMessage';
+    appendMessage(
+      isSelf ? username : msg.username,
+      msg.content,
+      isSelf,
+      msg.timestamp,
+      msg.replyTo || null
+    );
+  });
 }
 
 /* ---------- Reactions (client-side visual) ---------- */
@@ -160,16 +199,21 @@ function toggleReaction(btn) {
   btn.classList.remove('bounce');
   void btn.offsetWidth;
   btn.classList.add('bounce');
+  const countEl = btn.querySelector('.count');
+  const count = parseInt(countEl.textContent, 10);
   const active = btn.classList.toggle('active');
-  const count = parseInt(btn.querySelector('.count').textContent, 10);
-  btn.querySelector('.count').textContent = active ? count + 1 : count - 1;
+  const newCount = active ? count + 1 : count - 1;
+  if (newCount <= 0) {
+    btn.remove(); // remove pill when count hits 0
+    return;
+  }
+  countEl.textContent = newCount;
 }
 
 /* ---------- Mention dropdown ---------- */
 function getMentionQuery() {
   const val = input.value;
   const cursor = input.selectionStart;
-  // Walk back from cursor to find an @ that starts a word
   const before = val.slice(0, cursor);
   const match = before.match(/@(\w*)$/);
   return match ? match[1] : null;
@@ -184,13 +228,20 @@ function showMentionDropdown(query) {
 
   mentionDropdown.innerHTML = '';
   mentionIndex = -1;
-  filtered.forEach((u, i) => {
+  filtered.forEach((u) => {
     const item = document.createElement('div');
     item.className = 'mention-item';
-    item.dataset.index = i;
-    item.innerHTML = `<span class="mention-avatar ${avatarClass(u)}">${u.charAt(0).toUpperCase()}</span><span class="mention-name">@${u}</span>`;
+    // Safe — using textContent for user-provided values
+    const avatar = document.createElement('span');
+    avatar.className = `mention-avatar ${avatarClass(u)}`;
+    avatar.textContent = u.charAt(0).toUpperCase();
+    const nameEl = document.createElement('span');
+    nameEl.className = 'mention-name';
+    nameEl.textContent = `@${u}`;
+    item.appendChild(avatar);
+    item.appendChild(nameEl);
     item.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // keep input focus
+      e.preventDefault();
       insertMention(u);
     });
     mentionDropdown.appendChild(item);
@@ -234,9 +285,24 @@ function connect() {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    if (data.error) { alert(data.error); return; }
+
+    if (data.error) {
+      alert(data.error);
+      // If username taken, force re-join screen
+      if (data.error.includes('taken')) {
+        localStorage.removeItem(STORAGE_KEY);
+        username = '';
+        hasJoined = false;
+        chatScreen.classList.add('hidden');
+        joinScreen.classList.remove('hidden');
+      }
+      return;
+    }
 
     switch (data.type) {
+      case 'history':
+        loadHistory(data.messages);
+        break;
       case 'sentMessage':
         appendMessage(username, data.content, true, data.timestamp, data.replyTo);
         break;
@@ -271,7 +337,8 @@ function connect() {
 }
 
 function sendJoin() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN && !hasJoined) {
+    hasJoined = true;
     ws.send(JSON.stringify({ username }));
   }
 }
@@ -280,7 +347,11 @@ function scheduleReconnect() {
   if (reconnectTimer || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
   const delay = Math.min(1000 * 2 ** reconnectAttempts, 15000);
   reconnectAttempts++;
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    hasJoined = false; // allow re-join on new socket
+    connect();
+  }, delay);
 }
 
 function showChat() {
@@ -290,6 +361,7 @@ function showChat() {
 }
 
 function join(name) {
+  if (hasJoined) return; // prevent double-submit
   const trimmed = name.trim();
   if (!trimmed) { alert('Please enter a valid username'); return; }
   username = trimmed;
@@ -352,17 +424,12 @@ input.addEventListener('input', () => {
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => safeSend({ type: 'stopTyping' }), 2000);
 
-  // Mention autocomplete
   const query = getMentionQuery();
-  if (query !== null) {
-    showMentionDropdown(query);
-  } else {
-    hideMentionDropdown();
-  }
+  if (query !== null) showMentionDropdown(query);
+  else hideMentionDropdown();
 });
 
 input.addEventListener('keydown', (e) => {
-  // Navigate mention dropdown
   if (!mentionDropdown.classList.contains('hidden')) {
     const items = mentionDropdown.children;
     if (e.key === 'ArrowDown') {

@@ -10,35 +10,33 @@ const initializeDatabase = async () => {
 
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    // Render Postgres requires SSL in production
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   });
 
-  // Verify connection
+  // Verify connection and create tables
   const client = await pool.connect();
-  console.log('Connected to PostgreSQL database');
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id        SERIAL PRIMARY KEY,
+        username  TEXT NOT NULL,
+        message   TEXT NOT NULL,
+        type      TEXT NOT NULL DEFAULT 'text',
+        reply_to  JSONB DEFAULT NULL,
+        timestamp TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('Messages table created/verified');
 
-  // Create tables if they don't exist
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id        SERIAL PRIMARY KEY,
-      username  TEXT NOT NULL,
-      message   TEXT NOT NULL,
-      type      TEXT NOT NULL DEFAULT 'text',
-      timestamp TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  console.log('Messages table created/verified');
+    // Add reply_to column to existing deployments that don't have it
+    await client.query(`
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to JSONB DEFAULT NULL
+    `).catch(() => {}); // ignore if already exists on older pg versions
 
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS online_users (
-      username  TEXT PRIMARY KEY,
-      last_seen TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  console.log('Online_users table created/verified');
+  } finally {
+    client.release();
+  }
 
-  client.release();
   return pool;
 };
 
