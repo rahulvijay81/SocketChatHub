@@ -337,9 +337,10 @@ input.addEventListener('keydown', (e) => {
       return;
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
-      if (mentionIndex >= 0) {
+      const selectIndex = mentionIndex >= 0 ? mentionIndex : 0;
+      if (items.length > 0) {
         e.preventDefault();
-        const name = items[mentionIndex].querySelector('.mention-name').textContent.slice(1);
+        const name = items[selectIndex].querySelector('.mention-name').textContent.slice(1);
         insertMention(name);
         return;
       }
