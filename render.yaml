@@ -1,0 +1,21 @@
+databases:
+  - name: socketchathub-db
+    databaseName: socketchathub
+    user: socketchathub
+    plan: free
+    ipAllowList: []  # allow all connections (web service internal access)
+
+services:
+  - type: web
+    name: socketchathub
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: socketchathub-db
+          property: connectionString

@@ -1,32 +1,37 @@
 const WebSocket = require('ws');
-const { getMessages, saveMessage, setUserOnline, getOnlineUserCount, setUserOffline } = require('../models/messages');
+const { getMessages, saveMessage } = require('../models/messages');
 
 const initializeWebSocketServer = (server) => {
     const wss = new WebSocket.Server({ server });
     const clients = new Map(); // Store client info with their ws connection
 
-    // Function to broadcast online user count
-    const broadcastUserCount = async () => {
-        try {
-            const count = await getOnlineUserCount();
-            console.log("confirmation: User count updated to", count, "clients");
+    // Function to broadcast online user count (unique usernames currently connected)
+    const broadcastUserCount = () => {
+        const count = new Set(
+            Array.from(clients.values()).map((info) => info.username)
+        ).size;
 
-            const payload = JSON.stringify({
-                type: 'userCount',
-                count: count
-            });
+        const payload = JSON.stringify({
+            type: 'userCount',
+            count
+        });
 
-            console.log("payload sent to all clients", payload);
+        clients.forEach((_, client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(payload);
+            }
+        });
+    };
 
-            clients.forEach((_, client) => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(payload);
-                }
-            });
-            
-        } catch (err) {
-            console.error('Error broadcasting user count:', err);
-        }
+    // Broadcast the list of online usernames to all clients
+    const broadcastUserList = () => {
+        const users = [...new Set(Array.from(clients.values()).map((info) => info.username))];
+        const payload = JSON.stringify({ type: 'userList', users });
+        clients.forEach((_, client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(payload);
+            }
+        });
     };
 
     wss.on('connection', async (ws, req) => {
@@ -43,10 +48,10 @@ const initializeWebSocketServer = (server) => {
 
                 // Store client with their username
                 clients.set(ws, { username });
-                await setUserOnline(username);
                 console.log(`Client ${username} connected`);
 
-                broadcastUserCount()
+                broadcastUserCount();
+                broadcastUserList();
 
                 // Send previous messages
                 try {
@@ -58,7 +63,9 @@ const initializeWebSocketServer = (server) => {
                             ws.send(JSON.stringify({
                                 type: 'receivedMessage',
                                 username: msg.username,
-                                message: msg.message
+                                messageType: msg.type || 'text',
+                                content: msg.message,
+                                timestamp: msg.timestamp
                             }));
                         }
                     }
@@ -88,28 +95,35 @@ const initializeWebSocketServer = (server) => {
                         }
 
                         // Handle regular messages
-                        const { message } = data;
-                        if (!message) {
+                        const content = data.content;
+                        const messageType = data.messageType || 'text';
+                        if (!content) {
                             console.log('Invalid message format - missing message content');
                             return;
                         }
 
                         try {
                             // Save message to database
-                            await saveMessage(username, message);
+                            await saveMessage(username, content, messageType);
                             console.log('Message saved successfully');
+
+                            const now = new Date().toISOString();
 
                             // Send confirmation back to sender
                             ws.send(JSON.stringify({
                                 type: 'sentMessage',
-                                message: message
+                                messageType: messageType,
+                                content: content,
+                                timestamp: now
                             }));
 
                             // Broadcast to other clients
                             const broadcastPayload = JSON.stringify({
                                 type: 'receivedMessage',
                                 username: username,
-                                message: message
+                                messageType: messageType,
+                                content: content,
+                                timestamp: now
                             });
 
                             clients.forEach((clientInfo, client) => {
@@ -132,18 +146,14 @@ const initializeWebSocketServer = (server) => {
             }
         });
 
-        ws.on('close', async () => {
+        ws.on('close', () => {
             const clientInfo = clients.get(ws);
             const username = clientInfo?.username;
             console.log(`Client ${username || 'unknown'} disconnected`);
 
-            if (username) {
-                try {
-                    await setUserOffline(username);
-                } catch (err) {
-                    console.error(`Error setting ${username} offline:`, err);
-                }
+            clients.delete(ws);
 
+            if (username) {
                 // Notify other clients that this user has stopped typing
                 const stopTypingPayload = JSON.stringify({
                     type: 'stopTyping',
@@ -151,16 +161,14 @@ const initializeWebSocketServer = (server) => {
                 });
 
                 clients.forEach((info, client) => {
-                    if (client !== ws && client.readyState === WebSocket.OPEN) {
+                    if (client.readyState === WebSocket.OPEN) {
                         client.send(stopTypingPayload);
                     }
                 });
-            } else {
-                console.warn('Client info not found; skipping offline status update.');
             }
 
-            clients.delete(ws);
-            broadcastUserCount()
+            broadcastUserCount();
+            broadcastUserList();
         });
 
         ws.on('error', (err) => console.error('WebSocket error:', err));
