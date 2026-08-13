@@ -108,14 +108,19 @@ const initializeWebSocketServer = (server) => {
                     return;
                 }
 
-                // Block duplicate usernames
-                const taken = Array.from(clients.values()).some(
-                    (i) => i.username.toLowerCase() === username.toLowerCase()
+                // Block duplicate usernames — but allow rejoin if old socket is dead
+                const existingEntry = Array.from(clients.entries()).find(
+                    ([, info]) => info.username.toLowerCase() === username.toLowerCase()
                 );
-                if (taken) {
-                    ws.send(JSON.stringify({ error: 'Username already taken. Choose another.' }));
-                    ws.close();
-                    return;
+                if (existingEntry) {
+                    const [oldWs] = existingEntry;
+                    if (oldWs.readyState === WebSocket.OPEN || oldWs.readyState === WebSocket.CONNECTING) {
+                        ws.send(JSON.stringify({ error: 'Username already taken. Choose another.' }));
+                        ws.close();
+                        return;
+                    }
+                    // Old socket is dead — clean it up and let this one take over
+                    clients.delete(oldWs);
                 }
 
                 clients.set(ws, { username, ip, joinedAt: new Date().toISOString() });
