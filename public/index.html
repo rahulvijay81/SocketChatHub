@@ -391,6 +391,44 @@ header {
 }
 .mention-name { font-size: 14px; font-weight: 500; color: var(--text); }
 
+/* Reply bar above composer */
+.reply-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; margin-bottom: 8px;
+  background: var(--glass); border: 1px solid var(--border);
+  border-radius: 12px; gap: 10px;
+}
+.reply-bar-content {
+  display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;
+  color: var(--muted);
+}
+.reply-bar-content svg { flex: none; stroke: var(--purple); }
+.reply-bar-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.reply-bar-name { font-size: 12px; font-weight: 600; color: var(--purple); }
+.reply-bar-msg {
+  font-size: 13px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px;
+}
+.reply-bar-close {
+  flex: none; background: none; border: none; color: var(--faint);
+  cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.reply-bar-close:hover { color: var(--text); background: var(--glass-strong); }
+
+/* Reply quote inside bubble */
+.reply-quote {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 10px; margin-bottom: 6px;
+  border-left: 3px solid var(--purple);
+  border-radius: 6px; background: rgba(255,255,255,0.05);
+}
+.reply-quote-name { font-size: 11px; font-weight: 600; color: var(--purple); }
+.reply-quote-text {
+  font-size: 12.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;
+}
+
 /* @mention — plain bold text, no chip */
 .mention-chip {
   font-weight: 600;
@@ -441,6 +479,16 @@ header {
       </div>
 
       <div class="composer-wrap">
+        <div class="reply-bar hidden" id="replyBar">
+          <div class="reply-bar-content">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+            <div class="reply-bar-text">
+              <span class="reply-bar-name" id="replyBarName"></span>
+              <span class="reply-bar-msg" id="replyBarMsg"></span>
+            </div>
+          </div>
+          <button class="reply-bar-close" id="replyBarClose" title="Cancel reply">✕</button>
+        </div>
         <div class="composer">
           <div class="emoji-panel hidden" id="emojiPanel"></div>
           <div class="mention-dropdown hidden" id="mentionDropdown"></div>

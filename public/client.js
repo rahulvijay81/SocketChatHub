@@ -13,6 +13,10 @@ const emojiPanel = document.getElementById('emojiPanel');
 const typingEl = document.getElementById('typing');
 const typingText = typingEl.querySelector('.typing-text');
 const onlineCount = document.getElementById('onlineCount');
+const replyBar = document.getElementById('replyBar');
+const replyBarName = document.getElementById('replyBarName');
+const replyBarMsg = document.getElementById('replyBarMsg');
+const replyBarClose = document.getElementById('replyBarClose');
 const mentionDropdown = document.getElementById('mentionDropdown');
 
 const EMOJIS = ['😀','😂','😍','😊','😎','🥳','😢','😡','👍','👎','🙏','👏','❤️','🔥','🎉','✨','💯','😅','🤔','😴','🤯','😇','🤗','😘','🥰','😜','🤪','😭','😤','😱','💀','👀','💪','🫶','🤝','💔','🎂','⚽','🏆','🚀','🌙','☀️','🌈','🍕','☕'];
@@ -28,6 +32,26 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 /* ---------- Online users (for mention dropdown) ---------- */
 let onlineUsers = [];
 let mentionIndex = -1;
+
+/* ---------- Reply state ---------- */
+let replyTo = null; // { sender, content }
+
+function setReply(sender, content) {
+  replyTo = { sender, content };
+  replyBarName.textContent = sender;
+  replyBarMsg.textContent = content;
+  replyBar.classList.remove('hidden');
+  input.focus();
+}
+
+function clearReply() {
+  replyTo = null;
+  replyBar.classList.add('hidden');
+  replyBarName.textContent = '';
+  replyBarMsg.textContent = '';
+}
+
+replyBarClose.addEventListener('click', clearReply);
 
 /* ---------- Helpers ---------- */
 function safeSend(payload) {
@@ -71,8 +95,7 @@ function renderContent(content) {
 }
 
 /* ---------- Render a message ---------- */
-function appendMessage(sender, content, isSelf, timestamp) {
-  const isMentioned = false; // highlight removed
+function appendMessage(sender, content, isSelf, timestamp, replyData) {
   const row = document.createElement('div');
   row.className = 'msg' + (isSelf ? ' msg-self' : '');
   const initial = sender.charAt(0).toUpperCase();
@@ -92,7 +115,25 @@ function appendMessage(sender, content, isSelf, timestamp) {
       <button data-action="reply" title="Reply"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg></button>
       <button data-action="more" title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
     </div>`;
-  row.querySelector('.bubble').appendChild(renderContent(content));
+
+  const bubble = row.querySelector('.bubble');
+
+  // Show reply quote if present
+  if (replyData) {
+    const quote = document.createElement('div');
+    quote.className = 'reply-quote';
+    quote.innerHTML = `<span class="reply-quote-name">${replyData.sender}</span>`;
+    const qt = document.createElement('span');
+    qt.className = 'reply-quote-text';
+    qt.textContent = replyData.content;
+    quote.appendChild(qt);
+    bubble.appendChild(quote);
+  }
+
+  bubble.appendChild(renderContent(content));
+  // Store sender/content on the row for reply action
+  row.dataset.sender = sender;
+  row.dataset.content = content;
   messagesList.appendChild(row);
   scrollToBottom();
 }
@@ -197,10 +238,10 @@ function connect() {
 
     switch (data.type) {
       case 'sentMessage':
-        appendMessage(username, data.content, true, data.timestamp);
+        appendMessage(username, data.content, true, data.timestamp, data.replyTo);
         break;
       case 'receivedMessage':
-        appendMessage(data.username, data.content, false, data.timestamp);
+        appendMessage(data.username, data.content, false, data.timestamp, data.replyTo);
         break;
       case 'typing':
         if (data.username !== username) showTyping(data.username);
@@ -272,8 +313,9 @@ function hideTyping() {
 function sendMessage() {
   const content = input.value.trim();
   if (!content || !username) return;
-  safeSend({ messageType: 'text', content });
+  safeSend({ messageType: 'text', content, replyTo: replyTo || undefined });
   input.value = '';
+  clearReply();
   hideMentionDropdown();
   input.focus();
 }
@@ -370,7 +412,7 @@ messagesList.addEventListener('click', (e) => {
   if (!action) return;
   const row = action.closest('.msg');
   if (action.dataset.action === 'react') addReaction(row, '👍');
-  if (action.dataset.action === 'reply') input.focus();
+  if (action.dataset.action === 'reply') setReply(row.dataset.sender, row.dataset.content);
 });
 
 /* ---------- Boot ---------- */

@@ -95,6 +95,7 @@ const initializeWebSocketServer = (server) => {
                         // Handle regular messages
                         const content = data.content;
                         const messageType = data.messageType || 'text';
+                        const replyTo = data.replyTo || null;
                         if (!content) {
                             console.log('Invalid message format - missing message content');
                             return;
@@ -112,7 +113,8 @@ const initializeWebSocketServer = (server) => {
                                 type: 'sentMessage',
                                 messageType: messageType,
                                 content: content,
-                                timestamp: now
+                                timestamp: now,
+                                replyTo: replyTo
                             }));
 
                             // Broadcast to other clients
@@ -121,7 +123,8 @@ const initializeWebSocketServer = (server) => {
                                 username: username,
                                 messageType: messageType,
                                 content: content,
-                                timestamp: now
+                                timestamp: now,
+                                replyTo: replyTo
                             });
 
                             clients.forEach((clientInfo, client) => {
