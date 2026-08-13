@@ -158,6 +158,21 @@ function appendMessage(sender, content, isSelf, timestamp, replyData) {
   scrollToBottom();
 }
 
+/* ---------- System message (auto-clear warning / notification) ---------- */
+function appendSystemMessage(text) {
+  const el = document.createElement('div');
+  el.className = 'system-msg';
+  el.textContent = text;
+  messagesList.appendChild(el);
+  scrollToBottom();
+}
+
+function clearChat() {
+  const dateDivider = messagesList.querySelector('.date-divider');
+  messagesList.innerHTML = '';
+  if (dateDivider) messagesList.appendChild(dateDivider);
+}
+
 /* ---------- Load history (clears existing messages first) ---------- */
 function loadHistory(messages) {
   // Remove all existing message rows (keep the date divider)
@@ -320,6 +335,13 @@ function connect() {
         break;
       case 'userList':
         onlineUsers = data.users;
+        break;
+      case 'systemMessage':
+        appendSystemMessage(data.text);
+        break;
+      case 'chatCleared':
+        clearChat();
+        appendSystemMessage(data.text);
         break;
     }
   };

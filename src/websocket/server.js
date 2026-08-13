@@ -1,8 +1,11 @@
 const WebSocket = require('ws');
 const { getMessages, saveMessage } = require('../models/messages');
+const { getDatabase } = require('../config/db');
 
 const MAX_CONTENT_LENGTH = 2000;
 const MAX_USERNAME_LENGTH = 24;
+const CLEAR_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const WARN_BEFORE_MS   =  2 * 60 * 1000; //  2 minute warning before clear
 
 const initializeWebSocketServer = (server) => {
     const wss = new WebSocket.Server({ server });
@@ -23,6 +26,36 @@ const initializeWebSocketServer = (server) => {
             if (client.readyState === WebSocket.OPEN) client.send(payload);
         });
     };
+
+    const broadcast = (payload) => {
+        const msg = JSON.stringify(payload);
+        clients.forEach((_, client) => {
+            if (client.readyState === WebSocket.OPEN) client.send(msg);
+        });
+    };
+
+    // Auto-clear every 30 minutes — warn users 2 minutes before
+    const scheduleAutoClear = () => {
+        // Warning
+        setTimeout(async () => {
+            broadcast({ type: 'systemMessage', text: '⚠️ Chat will be cleared in 2 minutes.' });
+        }, CLEAR_INTERVAL_MS - WARN_BEFORE_MS);
+
+        // Clear
+        setTimeout(async () => {
+            try {
+                await getDatabase().query('TRUNCATE TABLE messages');
+                console.log('Auto-clear: messages table cleared');
+                broadcast({ type: 'chatCleared', text: '🗑️ Chat has been cleared. Starting fresh!' });
+            } catch (err) {
+                console.error('Auto-clear error:', err);
+            }
+            // Schedule next cycle
+            scheduleAutoClear();
+        }, CLEAR_INTERVAL_MS);
+    };
+
+    scheduleAutoClear();
 
     wss.on('connection', async (ws) => {
         console.log('WebSocket connection established');
