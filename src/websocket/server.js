@@ -58,16 +58,14 @@ const initializeWebSocketServer = (server) => {
                     const messages = await getMessages();
                     console.log(`Retrieved ${messages.length} messages successfully`);
                     for (const msg of messages) {
-                        // Only send messages from other users
-                        if (msg.username !== username) {
-                            ws.send(JSON.stringify({
-                                type: 'receivedMessage',
-                                username: msg.username,
-                                messageType: msg.type || 'text',
-                                content: msg.message,
-                                timestamp: msg.timestamp
-                            }));
-                        }
+                        const isSelf = msg.username === username;
+                        ws.send(JSON.stringify({
+                            type: isSelf ? 'sentMessage' : 'receivedMessage',
+                            username: msg.username,
+                            messageType: msg.type || 'text',
+                            content: msg.message,
+                            timestamp: msg.timestamp
+                        }));
                     }
                 } catch (err) {
                     console.error('Error retrieving messages:', err);
